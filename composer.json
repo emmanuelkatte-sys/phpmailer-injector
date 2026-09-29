@@ -1,0 +1,26 @@
+{
+    "name": "warship/phpmailer-injector",
+    "description": "Haraka SMTP mail injector using PHPMailer",
+    "type": "project",
+    "license": "proprietary",
+    "require": {
+        "php": ">=8.1",
+        "phpmailer/phpmailer": "7.0.2",
+        "symfony/yaml": "^6.4"
+    },
+    "suggest": {
+        "ext-gd": "JPG/PNG pixel noise for image_noise (falls back to trailing bytes without it)"
+    },
+    "autoload": {
+        "psr-4": {
+            "Warship\\Injector\\": "src/"
+        }
+    },
+    "config": {
+        "sort-packages": true,
+        "optimize-autoloader": true,
+        "platform": {
+            "php": "8.1.0"
+        }
+    }
+}
