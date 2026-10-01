@@ -6,6 +6,7 @@ namespace Warship\Injector\Variable;
 
 use Warship\Injector\Config\Config;
 use Warship\Injector\Recipient\Recipient;
+use Warship\Injector\Util\DomainHelper;
 
 final class Processor
 {
@@ -19,6 +20,8 @@ final class Processor
     private array $customVarModes = [];
     /** @var array<string, int> */
     private array $customVarIndex = [];
+    /** @var array<string, string>|null */
+    private ?array $senderContext = null;
 
     public function __construct(private readonly Config $cfg)
     {
@@ -57,6 +60,7 @@ final class Processor
         $content = $this->processUuidHashVariables($content);
         $content = $this->processCustomVariables($content, $recipient);
         $content = $this->processConditionalVariables($content, $recipient);
+        $content = self::processSpintax($content);
 
         return $content;
     }
@@ -116,6 +120,10 @@ final class Processor
     private function processTimeVariables(string $content): string
     {
         $now = new \DateTimeImmutable();
+        $tomorrow = $now->modify('+1 day');
+        $yesterday = $now->modify('-1 day');
+        $afterTomorrow = $now->modify('+2 days');
+        $lastWeek = $now->modify('-7 days');
         $weekdays = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
 
         $map = [
@@ -131,8 +139,40 @@ final class Processor
             '{TIMESTAMP}' => (string) $now->getTimestamp(),
             '{DATE_JP}' => $now->format('Y年m月d日'),
             '{DATE_CN}' => $now->format('Y年n月j日'),
+            '{DATE_KANJI}' => $now->format('Y年m月d日'),
+            '{DATE_FULLWIDTH}' => self::toFullwidthDigits($now->format('Y年m月d日')),
+            '{TOMORROW_DATE}' => $tomorrow->format('Y/m/d'),
+            '{TOMORROW_TIME}' => $tomorrow->format('H:i:s'),
+            '{YESTERDAY_DATE}' => $yesterday->format('Y/m/d'),
+            '{YESTERDAY_TIME}' => $yesterday->format('H:i:s'),
+            '{AFTER_TOMORROW_DATE}' => $afterTomorrow->format('Y/m/d'),
+            '{LAST_WEEK_DATE}' => $lastWeek->format('Y/m/d'),
             '{WEEKDAY}' => $weekdays[(int) $now->format('w')],
             '{WEEKDAY_EN}' => $now->format('l'),
+            '{LOGIN_TIME}' => $now->format('Y/m/d H:i'),
+            '{LOGIN_LOCATION}' => self::randomLoginLocation(),
+            '{LOGIN_DEVICE}' => self::randomLoginDevice(),
+            '{FANHAO}' => self::randomFanhao(),
+            '{SHUZI}' => (string) random_int(11111, 99999),
+            '{RANDOM_4}' => self::randomAlnumString(4),
+            '{RANDOM_6}' => self::randomAlnumString(6),
+            '{RANDOM_12}' => self::randomAlnumString(12),
+            '{RANDOM_24}' => self::randomAlnumString(24),
+            '{RANDSTRING}' => self::randomAlnumString(12),
+            '{24RANDSTRING24S}' => self::randomAlnumString(24),
+            '{64RANDSTRING64S}' => self::randomAlnumString(64),
+            '{RANDOM_COMMENT}' => '<!-- ' . self::randomAlnumString(8) . ' -->',
+            '{RANDOM_STYLE_COMMENT}' => '/* ' . self::randomAlnumString(6) . ' */',
+            '{RANDOM_ID}' => 'id="id_' . self::randomAlnumString(6) . '"',
+            '{RANDOM_CLASS}' => 'class="c_' . self::randomAlnumString(6) . '"',
+            '{RANDOM_MARGIN}' => random_int(0, 2) . 'px',
+            '{RANDOM_PADDING}' => random_int(0, 1) . 'px',
+            '{RANDOM_OPACITY}' => '0.' . random_int(98, 99),
+            '{RANDOM_LETTER_SPACING}' => sprintf('%.2fpx', (random_int(-10, 10) / 100.0)),
+            '{RANDOM_LINE_HEIGHT}' => sprintf('%.2f', (random_int(135, 145) / 100.0)),
+            '{RANDOM_FONT_SIZE_ADJ}' => (string) random_int(-1, 1),
+            '{RANDOM_COLOR_ADJ}' => sprintf('#%02x%02x%02x', random_int(51, 68), random_int(51, 68), random_int(51, 68)),
+            '{RANDOM_BG_ADJ}' => sprintf('#%02x%02x%02x', random_int(248, 252), random_int(248, 252), random_int(248, 252)),
         ];
 
         foreach ($map as $key => $value) {
@@ -181,11 +221,19 @@ final class Processor
         $user = $parts[0];
         $domain = $parts[1] ?? '';
 
+        $honorific = self::resolveHonorific($this->cfg->recipientHonorific, $this->cfg->recipientCustomPhrases);
+
         $map = [
             '{TO_EMAIL}' => $email,
+            '{EMAIL}' => $email,
+            '{RECEIVER_EMAIL}' => $email,
             '{TO_USER}' => $user,
+            '{USERNAME}' => $user,
             '{TO_DOMAIN}' => $domain,
             '{TO_NAME}' => $r->name,
+            '{NAME}' => $r->name,
+            '{HONORIFIC}' => $honorific,
+            '{RECEIVER_NAME}' => $r->name,
             '{TO_FIRST}' => $r->firstName,
             '{TO_LAST}' => $r->lastName,
             '{TO_USER_UPPER}' => strtoupper($user),
@@ -231,22 +279,40 @@ final class Processor
         return $content;
     }
 
-    private function processSenderVariables(string $content): string
+    public function setSenderContext(string $fromAddress): void
     {
-        $from = $this->cfg->senderFromAddress;
-        $parts = explode('@', $from, 2);
-        $user = $parts[0];
-        $domain = $parts[1] ?? '';
+        $parts = explode('@', $fromAddress, 2);
+        $user = ($parts[0] ?? '') !== '' ? $parts[0] : 'info';
+        $domain = $parts[1] ?? 'localhost';
+        $rootDomain = DomainHelper::extractRootDomain($domain);
+        $subdomain = (str_contains($domain, '.')) ? explode('.', $domain)[0] : $domain;
 
-        $map = [
-            '{FROM_EMAIL}' => $from,
+        $this->senderContext = [
+            '{FROM_EMAIL}' => $fromAddress,
+            '{SENDER_EMAIL}' => $fromAddress,
             '{FROM_USER}' => $user,
+            '{SENDER_USER}' => $user,
             '{FROM_DOMAIN}' => $domain,
+            '{SENDER_DOMAIN}' => $domain,
+            '{smtp_domain}' => $domain,
+            '{FROM_MAIN_DOMAIN}' => $rootDomain,
+            '{FROM_ROOT_DOMAIN}' => $rootDomain,
+            '{MAIN_DOMAIN}' => $rootDomain,
+            '{ROOT_DOMAIN}' => $rootDomain,
+            '{SENDER_MAIN_DOMAIN}' => $rootDomain,
+            '{SENDER_ROOT_DOMAIN}' => $rootDomain,
+            '{SUBDOMAIN}' => $subdomain,
             '{FROM_NAME}' => $this->cfg->senderFromName,
         ];
+    }
 
-        foreach ($map as $key => $value) {
-            $content = str_ireplace($key, $value, $content);
+    private function processSenderVariables(string $content): string
+    {
+        if ($this->senderContext === null) {
+            $this->setSenderContext($this->cfg->senderFromAddress);
+        }
+        foreach ($this->senderContext as $key => $value) {
+            $content = str_ireplace($key, (string) $value, $content);
         }
         return $content;
     }
@@ -501,5 +567,99 @@ final class Processor
             }
         }
         return $out;
+    }
+
+    public static function toFullwidthDigits(string $s): string
+    {
+        $half = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
+        $full = ['０', '１', '２', '３', '４', '５', '６', '７', '８', '９'];
+        return str_replace($half, $full, $s);
+    }
+
+    public static function randomLoginLocation(): string
+    {
+        $cities = [
+            'Tokyo, Japan',
+            'Osaka, Japan',
+            'Nagoya, Japan',
+            'Fukuoka, Japan',
+            'Sapporo, Japan',
+            'Yokohama, Japan',
+            'Kyoto, Japan',
+            'Kobe, Japan',
+        ];
+        return $cities[array_rand($cities)];
+    }
+
+    public static function randomLoginDevice(): string
+    {
+        if (random_int(1, 100) <= 55) {
+            $desktops = [
+                'Windows 10 / Chrome 124',
+                'Windows 11 / Chrome 126',
+                'Windows 11 / Edge 125',
+                'macOS 14.4 / Safari 17.4',
+                'macOS 13.6 / Chrome 125',
+            ];
+            return $desktops[array_rand($desktops)];
+        }
+        $mobiles = [
+            'iPhone 15 Pro (iOS 17.4) / Safari',
+            'iPhone 14 (iOS 16.6) / Safari',
+            'Pixel 8 (Android 14) / Chrome',
+            'Galaxy S24 (Android 14) / Chrome',
+            'Sony Xperia 1 V (Android 14) / Chrome',
+        ];
+        return $mobiles[array_rand($mobiles)];
+    }
+
+    public static function randomFanhao(): string
+    {
+        $letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+        return $letters[random_int(0, 25)] . $letters[random_int(0, 25)];
+    }
+
+    public static function randomAlnumString(int $length): string
+    {
+        $chars = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+        $out = '';
+        $max = strlen($chars) - 1;
+        for ($i = 0; $i < $length; $i++) {
+            $out .= $chars[random_int(0, $max)];
+        }
+        return $out;
+    }
+
+    /** @param list<string> $customList */
+    public static function resolveHonorific(string $type, array $customList = []): string
+    {
+        if (!empty($customList)) {
+            return $customList[array_rand($customList)];
+        }
+        $t = strtolower(trim($type));
+        return match ($t) {
+            'sama', '様' => '様',
+            'sensei', '先生' => '先生',
+            'onchu', '御中' => '御中',
+            'dono', '殿' => '殿',
+            'san', 'さん' => 'さん',
+            'random' => ['様', '先生', '御中', '殿', 'さん'][random_int(0, 4)],
+            default => '様',
+        };
+    }
+
+    public static function processSpintax(string $text): string
+    {
+        if (!str_contains($text, '|')) {
+            return $text;
+        }
+        $pattern = '/\{([^{}]+?\|[^{}]*?)\}/';
+        $maxIterations = 20;
+        while ($maxIterations-- > 0 && preg_match($pattern, $text, $matches)) {
+            $options = explode('|', $matches[1]);
+            $picked = $options[array_rand($options)];
+            $text = substr_replace($text, $picked, strpos($text, $matches[0]), strlen($matches[0]));
+        }
+        return $text;
     }
 }

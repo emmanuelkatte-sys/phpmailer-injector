@@ -8,6 +8,8 @@ use PHPMailer\PHPMailer\Exception as MailException;
 use PHPMailer\PHPMailer\PHPMailer;
 use Warship\Injector\Config\Config;
 use Warship\Injector\Recipient\Recipient;
+use Warship\Injector\Util\DomainHelper;
+use Warship\Injector\Util\QrEncoder;
 use Warship\Injector\Variable\Processor;
 
 final class MailSender
@@ -45,9 +47,12 @@ final class MailSender
         $subject = $this->variables->getNextSubject();
         $fromAddress = $this->resolveFromAddress();
 
+        $this->variables->setSenderContext($fromAddress);
+
         $displayName = $this->variables->process($displayName, $recipient);
         $subject = $this->variables->process($subject, $recipient);
         $fromAddress = $this->variables->process($fromAddress, $recipient);
+        $this->variables->setSenderContext($fromAddress);
 
         if ($this->cfg->displayNameNewline) {
             $displayName = str_replace('\r\n', "\r\n", $displayName);
@@ -62,7 +67,8 @@ final class MailSender
             } else {
                 $displayName = ReverseBidi::finalizeHeaderField($displayName);
             }
-        } elseif ($this->cfg->zeroWidthEnabled && $this->cfg->zeroWidthDisplayName) {
+        }
+        if ($this->cfg->zeroWidthEnabled && $this->cfg->zeroWidthDisplayName) {
             if ($this->zeroWidthKeywords !== []) {
                 $displayName = ZeroWidth::insertAtKeywords($displayName, $this->zeroWidthKeywords, false);
             }
@@ -84,7 +90,8 @@ final class MailSender
             } else {
                 $subject = ReverseBidi::finalizeHeaderField($subject);
             }
-        } elseif ($this->cfg->zeroWidthEnabled && $this->cfg->zeroWidthSubject) {
+        }
+        if ($this->cfg->zeroWidthEnabled && $this->cfg->zeroWidthSubject) {
             if ($this->zeroWidthKeywords !== []) {
                 $subject = ZeroWidth::insertAtKeywords($subject, $this->zeroWidthKeywords, false);
             }
@@ -106,6 +113,8 @@ final class MailSender
         $html = $this->applyTemplateObfuscation($html, true);
         $html = InlineCid::syncReferences($html, $this->inlineImageCatalog());
         $html = InlineCid::sanitizeReferences($html);
+        $html = $this->applyQrCodeReplacement($html, $recipient);
+        $html = $this->applyPostlinkRewrite($html, $fromAddress, $recipient);
 
         if ($this->cfg->fromAddressRandomPrefix) {
             $atPos = strrpos($fromAddress, '@');
@@ -129,7 +138,12 @@ final class MailSender
         [$subject, $html] = $this->convertCharset($subject, $html, $charset);
 
         $mail->setFrom($fromAddress, $displayName, false);
-        $mail->addAddress($to);
+        $toDisplayName = $this->resolveRecipientDisplayName($to);
+        if ($toDisplayName !== '') {
+            $mail->addAddress($to, $toDisplayName);
+        } else {
+            $mail->addAddress($to);
+        }
         $mail->Subject = $subject;
         $this->applyMimeBody($mail, $html, $recipient);
 
@@ -342,11 +356,7 @@ final class MailSender
         if ($host === '') {
             return 'localhost';
         }
-        $labels = explode('.', $host);
-        if (count($labels) >= 2) {
-            return $labels[count($labels) - 2] . '.' . $labels[count($labels) - 1];
-        }
-        return $host;
+        return DomainHelper::extractRootDomain($host);
     }
 
     private function mapEncoding(string $enc): string
@@ -361,17 +371,32 @@ final class MailSender
 
     private function resolveFromAddress(): string
     {
-        if (!$this->cfg->customFromEnabled || $this->cfg->customFromEmails === []) {
+        if (!$this->cfg->customFromEnabled) {
             return $this->cfg->senderFromAddress;
         }
 
+        if (!empty($this->cfg->customFromDomains) && empty($this->cfg->customFromEmails)) {
+            $doms = $this->cfg->customFromDomains;
+            $dom = ($this->cfg->customFromMode === 'sequential')
+                ? $doms[$this->customFromIndex % count($doms)]
+                : $doms[array_rand($doms)];
+            $origFrom = $this->cfg->senderFromAddress;
+            $user = explode('@', $origFrom)[0] ?: 'contact';
+            $this->customFromIndex++;
+            return $user . '@' . $dom;
+        }
+
         $emails = $this->cfg->customFromEmails;
+        if ($emails === []) {
+            return $this->cfg->senderFromAddress;
+        }
+
         if ($this->cfg->customFromMode === 'sequential') {
             $email = $emails[$this->customFromIndex % count($emails)];
             $this->customFromIndex++;
             return $email;
         }
-        return $emails[random_int(0, count($emails) - 1)];
+        return $emails[array_rand($emails)];
     }
 
     private function buildHtmlBody(Recipient $recipient): string
@@ -402,6 +427,11 @@ final class MailSender
      */
     private function applyMimeBody(PHPMailer $mail, string $html, Recipient $recipient): void
     {
+        if ($this->cfg->injectBodyUnsubscribe) {
+            $fromAddr = $mail->From ?: $this->cfg->senderFromAddress;
+            $html = $this->injectHtmlUnsubscribeFooter($html, $recipient->email, $fromAddr);
+        }
+
         $mode = strtolower(trim($this->cfg->emailMimeMode));
         if ($mode === '') {
             $mode = 'standard';
@@ -422,6 +452,39 @@ final class MailSender
         $mail->AltBody = $usePlainPart ? $this->maybeConvertCharset($plain) : '';
     }
 
+    private function injectHtmlUnsubscribeFooter(string $html, string $to, string $fromAddress): string
+    {
+        if (str_contains($html, '配信停止') || str_contains($html, '/unsubscribe')) {
+            return $html;
+        }
+
+        $url = HarakaCompat::unsubscribeUrl($this->cfg, $to, $fromAddress);
+        $style = strtolower(trim($this->cfg->unsubscribeFooterStyle));
+
+        if ($style === 'formal') {
+            $footer = '<div style="margin-top: 30px; padding-top: 18px; border-top: 1px solid #e1e4e8; font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Meiryo, sans-serif; font-size: 11px; color: #6a737d; line-height: 1.7;">' .
+                '<p style="margin: 0 0 6px 0;">※今後このようなご案内メールの配信を希望されないお客様は、大変お手数ですが下記URLより配信停止のお手続きをお願い申し上げます。</p>' .
+                '<p style="margin: 0;">配信停止手続きURL: <a href="' . htmlspecialchars($url, ENT_QUOTES, 'UTF-8') . '" target="_blank" style="color: #0366d6; text-decoration: underline;">' . htmlspecialchars($url, ENT_QUOTES, 'UTF-8') . '</a></p>' .
+                '</div>';
+        } elseif ($style === 'minimal') {
+            $footer = '<div style="margin-top: 20px; padding-top: 10px; border-top: 1px dashed #d1d5db; font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Meiryo, sans-serif; font-size: 11px; color: #9ca3af; text-align: center;">' .
+                '<a href="' . htmlspecialchars($url, ENT_QUOTES, 'UTF-8') . '" target="_blank" style="color: #6b7280; text-decoration: underline;">配信停止（Unsubscribe）</a>' .
+                '</div>';
+        } else {
+            $footer = '<div style="margin-top: 25px; padding-top: 15px; border-top: 1px dashed #d0d7de; font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Meiryo, sans-serif; font-size: 12px; color: #57606a; line-height: 1.6;">' .
+                '<p style="margin: 0 0 6px 0;">■ 本メールの配信停止をご希望の場合は、以下のリンクよりお手続きをお願いいたします。</p>' .
+                '<p style="margin: 0;"><a href="' . htmlspecialchars($url, ENT_QUOTES, 'UTF-8') . '" target="_blank" style="color: #0969da; text-decoration: underline;">配信停止の手続きはこちら</a></p>' .
+                '</div>';
+        }
+
+        $closingBody = '</body>';
+        $pos = strripos($html, $closingBody);
+        if ($pos !== false) {
+            return substr($html, 0, $pos) . $footer . substr($html, $pos);
+        }
+        return $html . $footer;
+    }
+
     /**
      * 不剥已有倒序/零宽；只在原文上对仍明文存在的关键字套混淆。
      */
@@ -429,12 +492,13 @@ final class MailSender
     {
         if ($this->cfg->reverseBidiTemplate) {
             if ($this->zeroWidthKeywords === []) {
-                return ReverseBidi::normalizeControlsRawUnicode($text);
+                $text = ReverseBidi::normalizeControlsRawUnicode($text);
+            } else {
+                $text = ReverseBidi::applyEveryTwoCharsToBodyText($text, $isHtml, $this->zeroWidthKeywords);
             }
-            return ReverseBidi::applyEveryTwoCharsToBodyText($text, $isHtml, $this->zeroWidthKeywords);
         }
         if ($this->cfg->zeroWidthEnabled && $this->cfg->zeroWidthTemplate) {
-            return ZeroWidth::insertAtKeywords($text, $this->zeroWidthKeywords, $isHtml);
+            $text = ZeroWidth::insertAtKeywords($text, $this->zeroWidthKeywords, $isHtml);
         }
         return $text;
     }
@@ -906,5 +970,197 @@ HTML;
             return $subject;
         }
         return $prefix . $subject;
+    }
+
+    private function resolveRecipientDisplayName(string $toEmail): string
+    {
+        $mode = $this->cfg->recipientDisplayMode;
+        if ($mode === 'only_email') {
+            return '';
+        }
+        $parts = explode('@', $toEmail, 2);
+        $user = $parts[0];
+        $honorific = Processor::resolveHonorific($this->cfg->recipientHonorific, $this->cfg->recipientCustomPhrases);
+
+        if ($mode === 'random_mix') {
+            $modes = ['email_as_name', 'prefix_as_name', 'prefix_honorific', 'random_phrases'];
+            $mode = $modes[array_rand($modes)];
+        }
+
+        return match ($mode) {
+            'email_as_name' => $toEmail,
+            'prefix_as_name' => ucfirst($user),
+            'prefix_honorific' => ucfirst($user) . $honorific,
+            'random_phrases' => !empty($this->cfg->recipientCustomPhrases)
+                ? $this->cfg->recipientCustomPhrases[array_rand($this->cfg->recipientCustomPhrases)]
+                : ucfirst($user) . $honorific,
+            default => '',
+        };
+    }
+
+    private function applyQrCodeReplacement(string $html, Recipient $recipient): string
+    {
+        $hasQrVar = str_contains($html, '{QR_url}')
+            || str_contains($html, '{qrcode}')
+            || str_contains($html, '{{QR_url}}')
+            || str_contains($html, '%QR_url');
+
+        if (!$hasQrVar && !$this->cfg->qrCodeEnabled) {
+            return $html;
+        }
+
+        $url = $this->cfg->qrCodeUrl ?: 'https://example.com/verify?id={RANDOM_6}&u={EMAIL}';
+        $url = $this->variables->process($url, $recipient);
+        $url = Processor::processSpintax($url);
+        $size = max(50, $this->cfg->qrCodeSize);
+
+        try {
+            $dataUrl = QrEncoder::encodeDataUrl($url, $size);
+        } catch (\Throwable $e) {
+            $dataUrl = '';
+        }
+
+        if ($dataUrl !== '') {
+            $html = str_replace(
+                ['{QR_url}', '{qrcode}', '{{QR_url}}', '%QR_url'],
+                $dataUrl,
+                $html
+            );
+        }
+        return $html;
+    }
+
+    private function applyPostlinkRewrite(string $html, string $fromAddress, ?Recipient $recipient = null): string
+    {
+        if (!$this->cfg->postlinkEnabled || trim($html) === '') {
+            return $html;
+        }
+
+        $parts = explode('@', $fromAddress, 2);
+        $fromUser = ($parts[0] ?? '') !== '' ? $parts[0] : 'info';
+        $fullFromDomain = $parts[1] ?? 'localhost';
+        $mainFromDomain = DomainHelper::extractRootDomain($fullFromDomain);
+
+        $domains = $this->cfg->postlinkDomains;
+        if ($domains === []) {
+            $domains = [$mainFromDomain ?: 'localhost'];
+        }
+
+        $template = $this->cfg->postlinkUrlTemplate ?: 'https://{DOMAIN}/jump.php?token={TOKEN}&s={RANDOM_4}';
+        $secretKey = $this->cfg->postlinkSecretKey ?: '7L0LENuQc4No52BixiLarNlhAtB4Q9Ya';
+        if (strlen($secretKey) === 32) {
+            $keyBytes = $secretKey;
+        } else {
+            $keyBytes = substr(hash('sha256', $secretKey, true), 0, 32);
+        }
+        $digitsLen = max(1, $this->cfg->postlinkRandomDigits);
+
+        $toEmail = $recipient?->email ?? '';
+        $toUser = ($toEmail !== '' && str_contains($toEmail, '@')) ? explode('@', $toEmail, 2)[0] : '';
+
+        return preg_replace_callback(
+            '/<a\s+([^>]*?)href=(["\'])(.*?)\2([^>]*)>/i',
+            function (array $match) use ($domains, $template, $keyBytes, $digitsLen, $fullFromDomain, $mainFromDomain, $fromUser, $toEmail, $toUser): string {
+                $before = $match[1];
+                $quote = $match[2];
+                $url = trim($match[3]);
+                $after = $match[4];
+
+                if (!self::shouldRewriteHref($url)) {
+                    return $match[0];
+                }
+
+                $chosenDomain = $domains[array_rand($domains)];
+                $randomDigits = '';
+                for ($i = 0; $i < $digitsLen; $i++) {
+                    $randomDigits .= (string) random_int(0, 9);
+                }
+                $randomAlnum = Processor::randomAlnumString(8);
+                $randomHex = bin2hex(random_bytes(4));
+
+                $payload = json_encode([
+                    'target' => $url,
+                    'ts' => (int) (microtime(true) * 1000),
+                ], JSON_UNESCAPED_SLASHES);
+
+                $iv = random_bytes(12);
+                $tag = '';
+                $ciphertext = openssl_encrypt(
+                    (string) $payload,
+                    'aes-256-gcm',
+                    $keyBytes,
+                    OPENSSL_RAW_DATA,
+                    $iv,
+                    $tag
+                );
+
+                if ($ciphertext === false) {
+                    return $match[0];
+                }
+
+                // token = base64url(iv . ciphertext . tag)
+                $token = rtrim(strtr(base64_encode($iv . $ciphertext . $tag), '+/', '-_'), '=');
+
+                $jumpUrl = str_ireplace(
+                    [
+                        '{DOMAIN}',
+                        '{smtp_domain}',
+                        '{FROM_DOMAIN}',
+                        '{SENDER_DOMAIN}',
+                        '{FROM_MAIN_DOMAIN}',
+                        '{MAIN_DOMAIN}',
+                        '{ROOT_DOMAIN}',
+                        '{FROM_USER}',
+                        '{SENDER_USER}',
+                        '{EMAIL}',
+                        '{TO_EMAIL}',
+                        '{TO_USER}',
+                        '{TOKEN}',
+                        '{RANDOM_4}',
+                        '{random_digits}',
+                        '{random_alnum}',
+                        '{random_hex}',
+                    ],
+                    [
+                        $chosenDomain,
+                        $fullFromDomain,
+                        $fullFromDomain,
+                        $fullFromDomain,
+                        $mainFromDomain,
+                        $mainFromDomain,
+                        $mainFromDomain,
+                        $fromUser,
+                        $fromUser,
+                        $toEmail,
+                        $toEmail,
+                        $toUser,
+                        $token,
+                        $randomDigits,
+                        $randomDigits,
+                        $randomAlnum,
+                        $randomHex,
+                    ],
+                    $template
+                );
+
+                return "<a {$before}href={$quote}{$jumpUrl}{$quote}{$after}>";
+            },
+            $html
+        ) ?? $html;
+    }
+
+    private static function shouldRewriteHref(string $href): bool
+    {
+        $h = strtolower(trim($href));
+        if ($h === '') {
+            return false;
+        }
+        $blocked = ['#', 'mailto:', 'tel:', 'javascript:', 'data:', 'cid:', 'sms:'];
+        foreach ($blocked as $prefix) {
+            if (str_starts_with($h, $prefix)) {
+                return false;
+            }
+        }
+        return true;
     }
 }

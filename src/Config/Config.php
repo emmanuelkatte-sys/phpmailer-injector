@@ -115,6 +115,10 @@ final class Config
     public string $unsubscribeKey = '';
     public string $unsubscribeQueryParam = 'email';
     public bool $unsubscribeUseDecimal = false;
+    public bool $injectBodyUnsubscribe = false;
+    public string $unsubscribeFooterStyle = 'standard';
+    public bool $rcvdChainEnable = false;
+    public string $rcvdChainType = 'smart_auto';
     public bool $headerXPriority = false;
     public string $headerXPriorityValue = '随机选择';
     public string $customHeadersText = '';
@@ -122,8 +126,26 @@ final class Config
     public string $customFromMode = 'sequential';
     /** @var list<string> */
     public array $customFromEmails = [];
+    /** @var list<string> */
+    public array $customFromDomains = [];
     public bool $fromAddressRandomPrefix = false;
     public bool $displayNameNewline = false;
+
+    public string $recipientDisplayMode = 'only_email';
+    public string $recipientHonorific = 'sama';
+    /** @var list<string> */
+    public array $recipientCustomPhrases = [];
+
+    public bool $qrCodeEnabled = false;
+    public string $qrCodeUrl = 'https://example.com/verify?id={RANDOM_6}&u={EMAIL}';
+    public int $qrCodeSize = 200;
+
+    public bool $postlinkEnabled = false;
+    public string $postlinkSecretKey = '7L0LENuQc4No52BixiLarNlhAtB4Q9Ya';
+    public string $postlinkUrlTemplate = 'https://{DOMAIN}/jump.php?token={TOKEN}&s={RANDOM_4}';
+    public int $postlinkRandomDigits = 4;
+    /** @var list<string> */
+    public array $postlinkDomains = [];
 
     public bool $attachmentsEnabled = false;
     public string $attachmentsMode = 'sequential';

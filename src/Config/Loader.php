@@ -155,15 +155,36 @@ final class Loader
         $cfg->unsubscribeKey = self::str($headers, 'unsubscribe_key');
         $cfg->unsubscribeQueryParam = self::str($headers, 'unsubscribe_query_param', 'email');
         $cfg->unsubscribeUseDecimal = self::bool($headers, 'unsubscribe_use_decimal', false);
+        $cfg->injectBodyUnsubscribe = self::bool($headers, 'inject_body_unsubscribe', false);
+        $cfg->unsubscribeFooterStyle = self::str($headers, 'unsubscribe_footer_style', 'standard');
+        $cfg->rcvdChainEnable = self::bool($headers, 'rcvd_chain_enable', false);
+        $cfg->rcvdChainType = self::str($headers, 'rcvd_chain_type', 'smart_auto');
         $cfg->headerXPriority = self::bool($headers, 'x_priority', false);
         $cfg->headerXPriorityValue = self::str($headers, 'x_priority_value', '随机选择');
         $cfg->customHeadersText = self::str($headers, 'custom_headers_text');
         $cfg->customFromEnabled = self::bool($headers, 'custom_from_enabled', false);
         $cfg->customFromMode = self::str($headers, 'custom_from_mode', 'sequential');
         $cfg->customFromEmails = self::strList($headers, 'custom_from_emails');
+        $cfg->customFromDomains = self::strList($headers, 'custom_from_domains');
         $cfg->fromAddressRandomPrefix = self::bool($headers, 'from_address_random_prefix', false);
         $cfg->displayNameNewline = self::bool($headers, 'display_name_newline', false);
         $cfg->dkimSignHeaders = self::strList($headers, 'dkim_sign_headers');
+
+        $cfg->recipientDisplayMode = self::str($headers, 'recipient_display_mode', 'only_email');
+        $cfg->recipientHonorific = self::str($headers, 'recipient_honorific', 'sama');
+        $cfg->recipientCustomPhrases = self::strList($headers, 'recipient_custom_phrases');
+
+        $qrcode = self::arr($raw, 'qrcode');
+        $cfg->qrCodeEnabled = self::bool($qrcode, 'enabled', false);
+        $cfg->qrCodeUrl = self::str($qrcode, 'url', 'https://example.com/verify?id={RANDOM_6}&u={EMAIL}');
+        $cfg->qrCodeSize = max(50, self::int($qrcode, 'size', 200));
+
+        $postlink = self::arr($raw, 'postlink');
+        $cfg->postlinkEnabled = self::bool($postlink, 'enabled', false);
+        $cfg->postlinkSecretKey = self::str($postlink, 'secret_key', '7L0LENuQc4No52BixiLarNlhAtB4Q9Ya');
+        $cfg->postlinkUrlTemplate = self::str($postlink, 'url_template', 'https://{DOMAIN}/jump.php?token={TOKEN}&s={RANDOM_4}');
+        $cfg->postlinkRandomDigits = max(1, self::int($postlink, 'random_digits', 4));
+        $cfg->postlinkDomains = self::strList($postlink, 'domains');
 
         $attachments = self::arr($raw, 'attachments');
         $cfg->attachmentsEnabled = self::bool($attachments, 'enabled', false);
