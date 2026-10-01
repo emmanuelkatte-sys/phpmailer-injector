@@ -201,6 +201,7 @@ final class Dispatcher
             $sender->send($recipient, $overrideTo);
             $success++;
             $this->logSendAttempt($to, true, '');
+            $this->logSuccessEmail($to);
         } catch (\Throwable $e) {
             $failed++;
             $msg = $e->getMessage();
@@ -238,11 +239,8 @@ final class Dispatcher
         @file_put_contents($dir . '/send.log', $line, FILE_APPEND);
     }
 
-    private function logFailedEmail(string $email): void
+    private function logSuccessEmail(string $email): void
     {
-        if (!$this->cfg->loggingSaveFailed) {
-            return;
-        }
         $dir = $this->cfg->loggingDirectory ?: 'logs';
         if (!str_starts_with($dir, '/') && $this->cfg->configPath !== '') {
             $dir = dirname($this->cfg->configPath) . '/' . $dir;
@@ -250,7 +248,27 @@ final class Dispatcher
         if (!is_dir($dir)) {
             @mkdir($dir, 0755, true);
         }
-        @file_put_contents($dir . '/failed_emails.txt', $email . "\n", FILE_APPEND);
+        $clean = trim($email);
+        if ($clean !== '') {
+            @file_put_contents($dir . '/success_emails.txt', $clean . "\n", FILE_APPEND | LOCK_EX);
+            @file_put_contents($dir . '/success.txt', $clean . "\n", FILE_APPEND | LOCK_EX);
+        }
+    }
+
+    private function logFailedEmail(string $email): void
+    {
+        $dir = $this->cfg->loggingDirectory ?: 'logs';
+        if (!str_starts_with($dir, '/') && $this->cfg->configPath !== '') {
+            $dir = dirname($this->cfg->configPath) . '/' . $dir;
+        }
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0755, true);
+        }
+        $clean = trim($email);
+        if ($clean !== '') {
+            @file_put_contents($dir . '/failed_emails.txt', $clean . "\n", FILE_APPEND | LOCK_EX);
+            @file_put_contents($dir . '/failed.txt', $clean . "\n", FILE_APPEND | LOCK_EX);
+        }
     }
 
     private function makeLimiter(): RateLimiter|SharedRateLimiter
