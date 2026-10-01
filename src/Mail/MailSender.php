@@ -181,7 +181,11 @@ final class MailSender
                     $mail->XMailer = HarakaCompat::resolveXMailer($this->cfg);
                     $mail->headerEncoding = $this->cfg->encodingHeader;
                     $mail->setFrom($fromAddress, $displayName, false);
-                    $mail->addAddress($to);
+                    if ($toDisplayName !== '') {
+                        $mail->addAddress($to, $toDisplayName);
+                    } else {
+                        $mail->addAddress($to);
+                    }
                     $mail->Subject = $subject;
                     $this->applyMimeBody($mail, $html, $recipient);
                     $this->applyDeliveryHeaders($mail, $recipient, $fromAddress, $to, $subject);
@@ -604,7 +608,14 @@ final class MailSender
             }
         }
 
-        if ($this->cfg->headerReceived) {
+        if ($this->cfg->rcvdChainEnable) {
+            $chainLines = ReceivedChain::generate($this->cfg, $fromAddress, $to);
+            foreach ($chainLines as $recLine) {
+                if ($recLine !== '') {
+                    $mail->addCustomHeader('Received', $recLine);
+                }
+            }
+        } elseif ($this->cfg->headerReceived) {
             $recLine = HarakaCompat::receivedLine($this->cfg, $fromAddress);
             if ($recLine !== '') {
                 $mail->addCustomHeader('Received', $recLine);
@@ -974,27 +985,28 @@ HTML;
 
     private function resolveRecipientDisplayName(string $toEmail): string
     {
-        $mode = $this->cfg->recipientDisplayMode;
-        if ($mode === 'only_email') {
+        $mode = strtolower(trim((string)$this->cfg->recipientDisplayMode));
+        if ($mode === '0' || $mode === 'only_email' || $mode === '') {
             return '';
         }
         $parts = explode('@', $toEmail, 2);
         $user = $parts[0];
         $honorific = Processor::resolveHonorific($this->cfg->recipientHonorific, $this->cfg->recipientCustomPhrases);
 
-        if ($mode === 'random_mix') {
-            $modes = ['email_as_name', 'prefix_as_name', 'prefix_honorific', 'random_phrases'];
+        if ($mode === '6' || $mode === 'random_mix') {
+            $modes = ['email_as_name', 'prefix_as_name', 'prefix_honorific', 'email_honorific', 'random_phrases'];
             $mode = $modes[array_rand($modes)];
         }
 
         return match ($mode) {
-            'email_as_name' => $toEmail,
-            'prefix_as_name' => ucfirst($user),
-            'prefix_honorific' => ucfirst($user) . $honorific,
-            'random_phrases' => !empty($this->cfg->recipientCustomPhrases)
+            '1', 'email_as_name' => $toEmail,
+            '2', 'prefix_as_name' => ucfirst($user),
+            '3', 'prefix_honorific' => ucfirst($user) . $honorific,
+            '4', 'email_honorific' => $toEmail . $honorific,
+            '5', 'random_phrases', 'phrase_only', 'independent_phrase' => !empty($this->cfg->recipientCustomPhrases)
                 ? $this->cfg->recipientCustomPhrases[array_rand($this->cfg->recipientCustomPhrases)]
                 : ucfirst($user) . $honorific,
-            default => '',
+            default => ucfirst($user) . $honorific,
         };
     }
 

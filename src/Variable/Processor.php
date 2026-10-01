@@ -119,16 +119,18 @@ final class Processor
 
     private function processTimeVariables(string $content): string
     {
-        $now = new \DateTimeImmutable();
+        $jst = new \DateTimeZone('Asia/Tokyo');
+        $now = new \DateTimeImmutable('now', $jst);
         $tomorrow = $now->modify('+1 day');
         $yesterday = $now->modify('-1 day');
         $afterTomorrow = $now->modify('+2 days');
+        $thirdDay = $now->modify('+3 days');
         $lastWeek = $now->modify('-7 days');
         $weekdays = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
 
         $map = [
             '{DATE_TIME}' => $now->format('Y-m-d H:i:s'),
-            '{DATE}' => $now->format('Y-m-d'),
+            '{DATE}' => $now->format('Y/m/d'),
             '{TIME}' => $now->format('H:i:s'),
             '{YEAR}' => $now->format('Y'),
             '{MONTH}' => $now->format('m'),
@@ -143,17 +145,34 @@ final class Processor
             '{DATE_FULLWIDTH}' => self::toFullwidthDigits($now->format('Y年m月d日')),
             '{TOMORROW_DATE}' => $tomorrow->format('Y/m/d'),
             '{TOMORROW_TIME}' => $tomorrow->format('H:i:s'),
+            '{TOMORROW_DATE_KANJI}' => $tomorrow->format('Y年m月d日'),
             '{YESTERDAY_DATE}' => $yesterday->format('Y/m/d'),
             '{YESTERDAY_TIME}' => $yesterday->format('H:i:s'),
+            '{YESTERDAY_DATE_KANJI}' => $yesterday->format('Y年m月d日'),
+            '{YESTERDAY_DATE_KANJI_FULLWIDTH}' => self::toFullwidthDigits($yesterday->format('Y年m月d日')),
             '{AFTER_TOMORROW_DATE}' => $afterTomorrow->format('Y/m/d'),
+            '{AFTER_TOMORROW_TIME}' => $afterTomorrow->format('H:i:s'),
+            '{AFTER_TOMORROW_DATE_KANJI}' => $afterTomorrow->format('Y年m月d日'),
+            '{THIRD_DAY_DATE}' => $thirdDay->format('Y/m/d'),
+            '{THIRD_DAY_TIME}' => $thirdDay->format('H:i:s'),
+            '{THIRD_DAY_DATE_KANJI}' => $thirdDay->format('Y年m月d日'),
             '{LAST_WEEK_DATE}' => $lastWeek->format('Y/m/d'),
+            '{LAST_WEEK_TIME}' => $lastWeek->format('H:i:s'),
+            '{LAST_WEEK_DATE_KANJI}' => $lastWeek->format('Y年m月d日'),
+            '{LAST_WEEK_DATE_KANJI_FULLWIDTH}' => self::toFullwidthDigits($lastWeek->format('Y年m月d日')),
             '{WEEKDAY}' => $weekdays[(int) $now->format('w')],
             '{WEEKDAY_EN}' => $now->format('l'),
+            '{WEEKNUMBER}' => $now->format('W'),
+            '{ISO8601}' => $now->format(\DateTimeInterface::ATOM),
             '{LOGIN_TIME}' => $now->format('Y/m/d H:i'),
+            '{LOGIN_TIME_ISO}' => $now->format('Y-m-d H:i:s'),
+            '{LOGIN_TIME_KANJI}' => $now->format('Y年m月d日 H:i'),
+            '{LOGIN_TIME_FULLWIDTH_KANJI}' => self::toFullwidthDigits($now->format('Y年m月d日 H:i')),
             '{LOGIN_LOCATION}' => self::randomLoginLocation(),
             '{LOGIN_DEVICE}' => self::randomLoginDevice(),
             '{FANHAO}' => self::randomFanhao(),
             '{SHUZI}' => (string) random_int(11111, 99999),
+            '{RANDNUM}' => (string) random_int(111, 999),
             '{RANDOM_4}' => self::randomAlnumString(4),
             '{RANDOM_6}' => self::randomAlnumString(6),
             '{RANDOM_12}' => self::randomAlnumString(12),
@@ -173,11 +192,51 @@ final class Processor
             '{RANDOM_FONT_SIZE_ADJ}' => (string) random_int(-1, 1),
             '{RANDOM_COLOR_ADJ}' => sprintf('#%02x%02x%02x', random_int(51, 68), random_int(51, 68), random_int(51, 68)),
             '{RANDOM_BG_ADJ}' => sprintf('#%02x%02x%02x', random_int(248, 252), random_int(248, 252), random_int(248, 252)),
+            '{RANDOM_BORDER_ADJ}' => sprintf('#%02x%02x%02x', random_int(230, 240), random_int(230, 240), random_int(230, 240)),
+            '{RANDOM_WHITESPACE}' => str_repeat(' ', random_int(0, 3)),
+            '{RANDOM_NEWLINE}' => "\n",
+            '{RANDOM_INVISIBLE_CHAR}' => '&#8203;',
+            '{INVISIBLE_CHAR}' => '&#8203;',
         ];
 
         foreach ($map as $key => $value) {
             $content = str_ireplace($key, $value, $content);
+            if (str_starts_with($key, '{') && str_ends_with($key, '}')) {
+                $inner = substr($key, 1, -1);
+                $content = str_ireplace('{{' . $inner . '}}', $value, $content);
+            }
         }
+
+        // 兼容 4.py 中的 % 前缀与 [...] 格式变量
+        $percentVars = [
+            '%time' => $now->format('H:i:s'),
+            '%date' => $now->format('Y/m/d'),
+            '%year' => $now->format('Y'),
+            '%month' => $now->format('m'),
+            '%day' => $now->format('d'),
+            '%hour' => $now->format('H'),
+            '%minute' => $now->format('i'),
+            '%second' => $now->format('s'),
+            '%weekday' => $now->format('l'),
+            '%iso8601' => $now->format(\DateTimeInterface::ATOM),
+            '%randstring' => self::randomAlnumString(12),
+            '%24randstring24s' => self::randomAlnumString(24),
+            '%64randstring64s' => self::randomAlnumString(64),
+            '%fanhao' => self::randomFanhao(),
+            '%shuzi' => (string) random_int(700000, 999999),
+            '%randnum' => (string) random_int(111, 999),
+            '%tomorrow_time' => $tomorrow->format('H:i:s'),
+            '%tomorrow_date' => $tomorrow->format('Y/m/d'),
+            '%1_date' => $tomorrow->format('Y/m/d'),
+            '[RAND_TEXT-MIX_20_30]' => self::randomAlnumString(19),
+            '[loglog23]' => self::randomAlnumString(8),
+            '[loglog24]' => self::randomAlnumString(8),
+            '[loglog25]' => self::randomAlnumString(8),
+        ];
+        foreach ($percentVars as $key => $value) {
+            $content = str_replace($key, $value, $content);
+        }
+
         return $content;
     }
 
@@ -227,6 +286,9 @@ final class Processor
             '{TO_EMAIL}' => $email,
             '{EMAIL}' => $email,
             '{RECEIVER_EMAIL}' => $email,
+            '{RECIPIENT_EMAIL}' => $email,
+            '{RECEIVER_ADDRESS}' => $email,
+            '[RECEIVER_ADDRESS]' => $email,
             '{TO_USER}' => $user,
             '{USERNAME}' => $user,
             '{TO_DOMAIN}' => $domain,
@@ -245,6 +307,10 @@ final class Processor
 
         foreach ($map as $key => $value) {
             $content = str_ireplace($key, $value, $content);
+            if (str_starts_with($key, '{') && str_ends_with($key, '}')) {
+                $inner = substr($key, 1, -1);
+                $content = str_ireplace('{{' . $inner . '}}', $value, $content);
+            }
         }
 
         foreach ($r->customFields as $key => $value) {

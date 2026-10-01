@@ -119,7 +119,15 @@ final class Config
     public string $unsubscribeFooterStyle = 'standard';
     public bool $rcvdChainEnable = false;
     public string $rcvdChainType = 'smart_auto';
-    public bool $headerXPriority = false;
+    public string $rcvdChainIpMode = 'dynamic';
+    public string $rcvdChainIpPool = 'smart_pool';
+    public int $rcvdChainHops = 1;
+    public string $rcvdChainMtaFlavor = 'dynamic';
+    public string $rcvdChainDomainStyle = 'dynamic';
+    public string $rcvdChainCustom = '';
+    public bool $rcvdChainStripAuthResults = true;
+    public bool $rcvdChainStripReceived = true;
+    public bool $rcvdChainStripClientIp = true;
     public string $headerXPriorityValue = '随机选择';
     public string $customHeadersText = '';
     public bool $customFromEnabled = false;

@@ -170,9 +170,29 @@ final class Loader
         $cfg->displayNameNewline = self::bool($headers, 'display_name_newline', false);
         $cfg->dkimSignHeaders = self::strList($headers, 'dkim_sign_headers');
 
-        $cfg->recipientDisplayMode = self::str($headers, 'recipient_display_mode', 'only_email');
-        $cfg->recipientHonorific = self::str($headers, 'recipient_honorific', 'sama');
+        $cfg->recipientDisplayMode = self::str($headers, 'recipient_display_mode', self::str($sender, 'recipient_display_mode', self::str($recipients, 'recipient_display_mode', 'only_email')));
+        $cfg->recipientHonorific = self::str($headers, 'recipient_honorific', self::str($sender, 'recipient_honorific', '様'));
         $cfg->recipientCustomPhrases = self::strList($headers, 'recipient_custom_phrases');
+        if ($cfg->recipientCustomPhrases === []) {
+            $cfg->recipientCustomPhrases = self::strList($sender, 'recipient_custom_phrases');
+        }
+
+        $rcvdChain = self::arr($raw, 'received_chain');
+        if (!empty($rcvdChain)) {
+            if (isset($rcvdChain['enabled'])) {
+                $cfg->rcvdChainEnable = self::bool($rcvdChain, 'enabled', $cfg->rcvdChainEnable);
+            }
+            $cfg->rcvdChainType = self::str($rcvdChain, 'chain_type', $cfg->rcvdChainType);
+            $cfg->rcvdChainIpMode = self::str($rcvdChain, 'ip_mode', 'dynamic');
+            $cfg->rcvdChainIpPool = self::str($rcvdChain, 'ip_pool', 'smart_pool');
+            $cfg->rcvdChainHops = max(1, min(2, self::int($rcvdChain, 'hops', 1)));
+            $cfg->rcvdChainMtaFlavor = self::str($rcvdChain, 'mta_flavor', 'dynamic');
+            $cfg->rcvdChainDomainStyle = self::str($rcvdChain, 'domain_style', 'dynamic');
+            $cfg->rcvdChainCustom = self::str($rcvdChain, 'custom_template', '');
+            $cfg->rcvdChainStripAuthResults = self::bool($rcvdChain, 'strip_auth_results', true);
+            $cfg->rcvdChainStripReceived = self::bool($rcvdChain, 'strip_received', true);
+            $cfg->rcvdChainStripClientIp = self::bool($rcvdChain, 'strip_client_ip', true);
+        }
 
         $qrcode = self::arr($raw, 'qrcode');
         $cfg->qrCodeEnabled = self::bool($qrcode, 'enabled', false);
