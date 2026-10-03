@@ -288,25 +288,25 @@ final class ReceivedChain
         switch ($effectiveType) {
             case 'carrier_docomo':
                 $cIp = ($usePublic || $isHybrid) ? $pubIp : $intIp;
-                $lines[] = sprintf("from %s ([%s]) by %s %s id %s%s;\r\n\t%s", $pubHost, $cIp, $dom, $sw1, $id1, $forPart, $date1);
+                $lines[] = sprintf("from %s ([%s]) by %s %s id %s%s; %s", $pubHost, $cIp, $dom, $sw1, $id1, $forPart, $date1);
                 if ($hopsCount === 2) {
-                    $lines[] = sprintf("from %s ([%s]) by %s %s id %s%s;\r\n\t%s", $intHost, $intIp, $pubHost, $sw2, $id2, $forPart, $date2);
+                    $lines[] = sprintf("from %s ([%s]) by %s %s id %s%s; %s", $intHost, $intIp, $pubHost, $sw2, $id2, $forPart, $date2);
                 }
                 break;
 
             case 'carrier_kddi':
                 $cIp = ($usePublic || $isHybrid) ? $pubIp : $intIp;
-                $lines[] = sprintf("from %s ([%s]) by %s %s id %s%s;\r\n\t%s", $pubHost, $cIp, $dom, $sw1, $id1, $forPart, $date1);
+                $lines[] = sprintf("from %s ([%s]) by %s %s id %s%s; %s", $pubHost, $cIp, $dom, $sw1, $id1, $forPart, $date1);
                 if ($hopsCount === 2) {
-                    $lines[] = sprintf("from %s ([%s]) by %s %s id %s%s;\r\n\t%s", $intHost, $intIp, $pubHost, $sw2, $id2, $forPart, $date2);
+                    $lines[] = sprintf("from %s ([%s]) by %s %s id %s%s; %s", $intHost, $intIp, $pubHost, $sw2, $id2, $forPart, $date2);
                 }
                 break;
 
             case 'carrier_softbank':
-                $lines[] = sprintf("from %s ([%s]) by %s %s id %s%s;\r\n\t%s", $pubHost, $pubIp, $dom, $sw1, $id1, $forPart, $date1);
+                $lines[] = sprintf("from %s ([%s]) by %s %s id %s%s; %s", $pubHost, $pubIp, $dom, $sw1, $id1, $forPart, $date1);
                 if ($hopsCount === 2) {
                     $lines[] = sprintf(
-                        "from %s by %s with ESMTP id <%s.WORB.%d.%s@mailsv.softbank.jp>%s;\r\n\t%s",
+                        "from %s by %s with ESMTP id <%s.WORB.%d.%s@mailsv.softbank.jp>%s; %s",
                         $intHost,
                         $pubHost,
                         $now->format('YmdHis'),
@@ -319,24 +319,24 @@ final class ReceivedChain
                 break;
 
             case 'aws_tokyo':
-                $lines[] = sprintf("from %s (%s [%s]) by mail.%s %s id %s%s;\r\n\t%s", $pubHost, $pubHost, $pubIp, $dom, $sw1, $id1, $forPart, $date1);
+                $lines[] = sprintf("from %s (%s [%s]) by mail.%s %s id %s%s; %s", $pubHost, $pubHost, $pubIp, $dom, $sw1, $id1, $forPart, $date1);
                 if ($hopsCount === 2) {
-                    $lines[] = sprintf("from %s ([%s]) by %s %s id %s%s;\r\n\t%s", $intHost, $intIp, $pubHost, $sw2, $id2, $forPart, $date2);
+                    $lines[] = sprintf("from %s ([%s]) by %s %s id %s%s; %s", $intHost, $intIp, $pubHost, $sw2, $id2, $forPart, $date2);
                 }
                 break;
 
             case 'japan_idc':
-                $lines[] = sprintf("from %s ([%s]) by %s %s id %s%s;\r\n\t%s", $pubHost, $pubIp, $dom, $sw1, $id1, $forPart, $date1);
+                $lines[] = sprintf("from %s ([%s]) by %s %s id %s%s; %s", $pubHost, $pubIp, $dom, $sw1, $id1, $forPart, $date1);
                 if ($hopsCount === 2) {
-                    $lines[] = sprintf("from %s ([%s]) by %s %s id %s%s;\r\n\t%s", $intHost, $intIp, $pubHost, $sw2, $id2, $forPart, $date2);
+                    $lines[] = sprintf("from %s ([%s]) by %s %s id %s%s; %s", $intHost, $intIp, $pubHost, $sw2, $id2, $forPart, $date2);
                 }
                 break;
 
             default: // enterprise
                 $cIp = $usePublic ? $pubIp : $intIp;
-                $lines[] = sprintf("from %s ([%s]) by %s %s id %s%s;\r\n\t%s", $pubHost, $cIp, $dom, $sw1, $id1, $forPart, $date1);
+                $lines[] = sprintf("from %s ([%s]) by %s %s id %s%s; %s", $pubHost, $cIp, $dom, $sw1, $id1, $forPart, $date1);
                 if ($hopsCount === 2) {
-                    $lines[] = sprintf("from %s ([%s]) by %s %s id %s%s;\r\n\t%s", $intHost, $intIp, $pubHost, $sw2, $id2, $forPart, $date2);
+                    $lines[] = sprintf("from %s ([%s]) by %s %s id %s%s; %s", $intHost, $intIp, $pubHost, $sw2, $id2, $forPart, $date2);
                 }
                 break;
         }

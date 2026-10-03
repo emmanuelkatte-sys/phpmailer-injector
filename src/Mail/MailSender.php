@@ -137,14 +137,15 @@ final class MailSender
 
         [$subject, $html] = $this->convertCharset($subject, $html, $charset);
 
+        $displayName = trim(str_replace(["\r", "\n"], '', $displayName));
         $mail->setFrom($fromAddress, $displayName, false);
-        $toDisplayName = $this->resolveRecipientDisplayName($to);
+        $toDisplayName = trim(str_replace(["\r", "\n"], '', $this->resolveRecipientDisplayName($to)));
         if ($toDisplayName !== '') {
             $mail->addAddress($to, $toDisplayName);
         } else {
             $mail->addAddress($to);
         }
-        $mail->Subject = $subject;
+        $mail->Subject = trim(str_replace(["\r", "\n"], ' ', $subject));
         $this->applyMimeBody($mail, $html, $recipient);
 
         $this->applyDeliveryHeaders($mail, $recipient, $fromAddress, $to, $subject);
@@ -611,22 +612,25 @@ final class MailSender
         if ($this->cfg->rcvdChainEnable) {
             $chainLines = ReceivedChain::generate($this->cfg, $fromAddress, $to);
             foreach ($chainLines as $recLine) {
-                if ($recLine !== '') {
-                    $mail->addCustomHeader('Received', $recLine);
+                $cleanLine = trim((string) preg_replace('/\s+/', ' ', str_replace(["\r", "\n", "\t"], ' ', $recLine)));
+                if ($cleanLine !== '') {
+                    $mail->addCustomHeader('Received', $cleanLine);
                 }
             }
         } elseif ($this->cfg->headerReceived) {
             $recLine = HarakaCompat::receivedLine($this->cfg, $fromAddress);
-            if ($recLine !== '') {
-                $mail->addCustomHeader('Received', $recLine);
+            $cleanLine = trim((string) preg_replace('/\s+/', ' ', str_replace(["\r", "\n", "\t"], ' ', $recLine)));
+            if ($cleanLine !== '') {
+                $mail->addCustomHeader('Received', $cleanLine);
             }
         }
 
         foreach ($this->parseCustomHeaders($this->cfg->customHeadersText) as [$name, $value]) {
-            $mail->addCustomHeader(
-                $this->variables->process($name, $recipient),
-                $this->variables->process($value, $recipient)
-            );
+            $pName = trim(str_replace(["\r", "\n", ":"], '', $this->variables->process($name, $recipient)));
+            $pVal = trim((string) preg_replace('/\s+/', ' ', str_replace(["\r", "\n"], ' ', $this->variables->process($value, $recipient))));
+            if ($pName !== '' && $pVal !== '') {
+                $mail->addCustomHeader($pName, $pVal);
+            }
         }
 
         if ($mail instanceof WarshipMailer) {
