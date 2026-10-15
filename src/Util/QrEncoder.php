@@ -273,7 +273,7 @@ final class QrEncoder
             $rows = $upwards ? range($size - 1, 0) : range(0, $size - 1);
             foreach ($rows as $r) {
                 for ($c = $rightCol; $c >= $rightCol - 1; $c--) {
-                    if ($matrix[$r][$c] < 0) { // Unassigned
+                    if ($matrix[$r][$c] === -1) { // Unassigned
                         $rawBit = ($bitIdx < $bitCount) ? (int) $finalBits[$bitIdx] : 0;
                         $bitIdx++;
                         // Apply Mask 0: (row + col) % 2 === 0
