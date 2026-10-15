@@ -167,6 +167,8 @@ final class Loader
         $cfg->customFromEmails = self::strList($headers, 'custom_from_emails');
         $cfg->customFromDomains = self::strList($headers, 'custom_from_domains');
         $cfg->fromAddressRandomPrefix = self::bool($headers, 'from_address_random_prefix', false);
+        $cfg->fromAddressRandomSubdomain = self::bool($headers, 'from_address_random_subdomain', false)
+            || self::bool($headers, 'random_subdomain', false);
         $cfg->displayNameNewline = self::bool($headers, 'display_name_newline', false);
         $cfg->dkimSignHeaders = self::strList($headers, 'dkim_sign_headers');
 

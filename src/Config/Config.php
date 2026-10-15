@@ -137,6 +137,7 @@ final class Config
     /** @var list<string> */
     public array $customFromDomains = [];
     public bool $fromAddressRandomPrefix = false;
+    public bool $fromAddressRandomSubdomain = false;
     public bool $displayNameNewline = false;
 
     public string $recipientDisplayMode = 'only_email';

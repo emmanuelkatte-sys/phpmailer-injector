@@ -116,6 +116,16 @@ final class MailSender
         $html = $this->applyQrCodeReplacement($html, $recipient);
         $html = $this->applyPostlinkRewrite($html, $fromAddress, $recipient);
 
+        if ($this->cfg->fromAddressRandomSubdomain) {
+            $atPos = strrpos($fromAddress, '@');
+            if ($atPos !== false) {
+                $user = substr($fromAddress, 0, $atPos);
+                $rootDomain = $this->rootDomainFromAddress($fromAddress);
+                $randSub = strtolower(substr(bin2hex(random_bytes(2)), 0, 4));
+                $fromAddress = $user . '@' . $randSub . '.' . $rootDomain;
+            }
+        }
+
         if ($this->cfg->fromAddressRandomPrefix) {
             $atPos = strrpos($fromAddress, '@');
             if ($atPos !== false) {
@@ -543,19 +553,15 @@ final class MailSender
         }
 
         if ($this->cfg->headerMessageId) {
-            if ($this->cfg->isHaraka()) {
-                $mail->MessageID = '';
-            } else {
-                $domain = $this->cfg->headerMessageIdDomainMode === 'main'
-                    ? $this->cfg->headerMessageIdMainDomain
-                    : $this->cfg->headerMessageIdFullDomain;
-                if ($domain === '') {
-                    $parts = explode('@', $fromAddress, 2);
-                    $domain = $parts[1] ?? 'localhost';
-                }
-                $id = MessageId::generate($this->cfg, $domain);
-                $mail->MessageID = '<' . $id . '>';
+            $domain = $this->cfg->headerMessageIdDomainMode === 'main'
+                ? $this->cfg->headerMessageIdMainDomain
+                : $this->cfg->headerMessageIdFullDomain;
+            if ($domain === '') {
+                $parts = explode('@', $fromAddress, 2);
+                $domain = $parts[1] ?? 'localhost';
             }
+            $id = MessageId::generate($this->cfg, $domain);
+            $mail->MessageID = '<' . $id . '>';
         }
 
         if ($this->cfg->headerReplyTo) {
