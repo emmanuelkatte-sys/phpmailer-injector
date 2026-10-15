@@ -267,6 +267,8 @@ final class MailSender
         $mail->Encoding = $this->mapEncoding($this->cfg->encodingBody ?: $this->cfg->encodingTransfer);
         $mail->XMailer = HarakaCompat::resolveXMailer($this->cfg);
         $mail->headerEncoding = $this->cfg->encodingHeader;
+        $mail->senderMode = $this->cfg->senderMode;
+        $mail->senderAddress = $this->cfg->senderAddress;
         $mail->Timeout = $this->cfg->smtpTimeout > 0 ? $this->cfg->smtpTimeout : 30;
         $mail->SMTPDebug = 0;
 
@@ -390,28 +392,33 @@ final class MailSender
             return $this->cfg->senderFromAddress;
         }
 
-        if (!empty($this->cfg->customFromDomains) && empty($this->cfg->customFromEmails)) {
-            $doms = $this->cfg->customFromDomains;
-            $dom = ($this->cfg->customFromMode === 'sequential')
-                ? $doms[$this->customFromIndex % count($doms)]
-                : $doms[array_rand($doms)];
-            $origFrom = $this->cfg->senderFromAddress;
-            $user = explode('@', $origFrom)[0] ?: 'contact';
-            $this->customFromIndex++;
-            return $user . '@' . $dom;
+        // 伪装发件人列表轮换：汇总邮箱池与域名池
+        $pool = [];
+        if (!empty($this->cfg->customFromEmails)) {
+            $pool = $this->cfg->customFromEmails;
+        } elseif (!empty($this->cfg->customFromDomains)) {
+            $user = explode('@', $this->cfg->senderFromAddress)[0] ?: 'contact';
+            foreach ($this->cfg->customFromDomains as $d) {
+                $d = trim($d);
+                if ($d === '') {
+                    continue;
+                }
+                $pool[] = str_contains($d, '@') ? $d : ($user . '@' . $d);
+            }
         }
 
-        $emails = $this->cfg->customFromEmails;
-        if ($emails === []) {
+        if ($pool === []) {
             return $this->cfg->senderFromAddress;
         }
 
-        if ($this->cfg->customFromMode === 'sequential') {
-            $email = $emails[$this->customFromIndex % count($emails)];
-            $this->customFromIndex++;
-            return $email;
+        if ($this->cfg->customFromMode === 'random') {
+            return $pool[array_rand($pool)];
         }
-        return $emails[array_rand($emails)];
+
+        // 顺序轮换
+        $email = $pool[$this->customFromIndex % count($pool)];
+        $this->customFromIndex++;
+        return $email;
     }
 
     private function buildHtmlBody(Recipient $recipient): string

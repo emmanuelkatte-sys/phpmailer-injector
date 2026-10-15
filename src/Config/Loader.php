@@ -28,6 +28,8 @@ final class Loader
         $cfg->senderEnvelopeFrom = self::str($sender, 'envelope_from', $cfg->senderFromAddress);
         $cfg->senderDisplayNames = self::strList($sender, 'display_names');
         $cfg->senderDisplayNameMode = self::str($sender, 'display_name_mode', 'sequential');
+        $cfg->senderMode = strtolower(self::str($sender, 'sender_mode', 'none'));
+        $cfg->senderAddress = self::str($sender, 'sender_address', '');
 
         $cfg->mtaType = strtolower(self::str($raw, 'mta_type', 'pmta'));
         if ($cfg->mtaType === 'zone-mta' || $cfg->mtaType === 'zonepmta') {
@@ -170,6 +172,12 @@ final class Loader
         $cfg->fromAddressRandomSubdomain = self::bool($headers, 'from_address_random_subdomain', false)
             || self::bool($headers, 'random_subdomain', false);
         $cfg->displayNameNewline = self::bool($headers, 'display_name_newline', false);
+        if (isset($headers['sender_mode'])) {
+            $cfg->senderMode = strtolower(self::str($headers, 'sender_mode', $cfg->senderMode));
+        }
+        if (isset($headers['sender_address'])) {
+            $cfg->senderAddress = self::str($headers, 'sender_address', $cfg->senderAddress);
+        }
         $cfg->dkimSignHeaders = self::strList($headers, 'dkim_sign_headers');
 
         $cfg->recipientDisplayMode = self::str($headers, 'recipient_display_mode', self::str($sender, 'recipient_display_mode', self::str($recipients, 'recipient_display_mode', 'only_email')));

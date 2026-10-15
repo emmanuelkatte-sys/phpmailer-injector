@@ -12,6 +12,8 @@ final class Config
     public string $senderFromAddress = '';
     public string $senderFromName = '';
     public string $senderEnvelopeFrom = '';
+    public string $senderMode = 'none';
+    public string $senderAddress = '';
     /** @var list<string> */
     public array $senderDisplayNames = [];
     public string $senderDisplayNameMode = 'sequential';

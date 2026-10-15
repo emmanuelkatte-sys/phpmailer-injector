@@ -24,6 +24,8 @@ final class WarshipMailer extends PHPMailer
     public string $mimeMode = 'standard';
     public bool $shuffleHeaders = false;
     public string $headerEncoding = 'base64';
+    public string $senderMode = 'none';
+    public string $senderAddress = '';
 
     public function encodeHeader($str, $position = 'text')
     {
@@ -81,7 +83,24 @@ final class WarshipMailer extends PHPMailer
             shuffle($others);
             $this->CustomHeader = array_merge($received, $others, $unsub);
         }
-        return parent::createHeader();
+
+        $header = parent::createHeader();
+
+        // 严格根据 senderMode 处理 Sender: 邮件头
+        // 默认 'none': 不添加 Sender 头，彻底移除 PHPMailer 自动生成的 Sender 头，防代发泄漏
+        if ($this->senderMode === 'none' || $this->senderMode === '') {
+            $header = (string) preg_replace('/^Sender:[^\r\n]*\r?\n/mi', '', $header);
+        } elseif ($this->senderMode === 'follow_from') {
+            $header = (string) preg_replace('/^Sender:[^\r\n]*\r?\n/mi', '', $header);
+            if (!empty($this->From)) {
+                $header .= $this->headerLine('Sender', '<' . $this->From . '>');
+            }
+        } elseif ($this->senderMode === 'custom' && $this->senderAddress !== '') {
+            $header = (string) preg_replace('/^Sender:[^\r\n]*\r?\n/mi', '', $header);
+            $header .= $this->headerLine('Sender', '<' . $this->senderAddress . '>');
+        }
+
+        return $header;
     }
 
     public function preSend()
